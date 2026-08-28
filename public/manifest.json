@@ -1,0 +1,12 @@
+{
+  "name": "Backgammon",
+  "short_name": "Backgammon",
+  "description": "Play backgammon online with real rules — free and open source.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f3ec",
+  "theme_color": "#a5673f",
+  "icons": [
+    { "src": "/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
