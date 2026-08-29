@@ -6,8 +6,9 @@ with achievements, a game replay viewer, pass-and-play, animated UI, full
 Hebrew/English (RTL-aware) i18n, and light/dark theming. Built with Next.js 14,
 TypeScript, Tailwind, and Supabase.
 
-> Live demo / screenshot: run it locally (below) and it's ready in seconds — no
-> screenshot is checked in yet, see **Known issues**.
+> 🎮 **Play it now:** [backgammon-app-nine.vercel.app](https://backgammon-app-nine.vercel.app)
+>
+> Screenshot not checked in yet, see **Known issues**.
 
 ## Features
 
@@ -193,8 +194,6 @@ a replay viewer. Deliberately not built yet:
 
 - No screenshot is embedded in this README yet — run `npm run dev` and capture
   one whenever convenient.
-- `metadataBase` in `app/layout.tsx` still points at the placeholder
-  `https://example.com`; update it to the real deployed domain once you have one.
 - The AI's "Hard" difficulty is a stronger single-ply heuristic, not a real
   multi-ply search — it's noticeably better than "Medium" but still beatable.
 - Online rooms trust the seated players' clients to compute legal moves (there's

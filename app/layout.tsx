@@ -7,7 +7,7 @@ import { Navbar } from "@/components/Navbar";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://example.com"),
+  metadataBase: new URL("https://backgammon-app-nine.vercel.app"),
   title: {
     default: "Backgammon — Play online with real rules",
     template: "%s · Backgammon",
