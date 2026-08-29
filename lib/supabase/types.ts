@@ -4,7 +4,16 @@ export interface Profile {
   rating: number;
   wins: number;
   losses: number;
+  avatar_url: string | null;
   created_at: string;
+}
+
+export interface StoredMove {
+  player: "white" | "black";
+  from: number | "bar";
+  to: number | "off";
+  die: number;
+  hit: boolean;
 }
 
 export interface GameRecord {
@@ -15,6 +24,7 @@ export interface GameRecord {
   winner: "white" | "black" | null;
   win_kind: "normal" | "gammon" | "backgammon" | null;
   moves_count: number;
+  moves: StoredMove[] | null;
   created_at: string;
   finished_at: string | null;
 }

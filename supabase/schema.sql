@@ -9,8 +9,12 @@ create table if not exists public.profiles (
   rating integer not null default 1000,
   wins integer not null default 0,
   losses integer not null default 0,
+  avatar_url text,
   created_at timestamptz not null default now()
 );
+
+-- Added after the initial release for profile pictures.
+alter table public.profiles add column if not exists avatar_url text;
 
 alter table public.profiles enable row level security;
 
@@ -51,9 +55,15 @@ create table if not exists public.games (
   winner text check (winner in ('white', 'black')),
   win_kind text check (win_kind in ('normal', 'gammon', 'backgammon')),
   moves_count integer not null default 0,
+  moves jsonb,
   created_at timestamptz not null default now(),
   finished_at timestamptz
 );
+
+-- Added after the initial release for the replay viewer. `add column if not
+-- exists` keeps this file safe to re-run against a project created before
+-- this column existed.
+alter table public.games add column if not exists moves jsonb;
 
 alter table public.games enable row level security;
 
@@ -98,10 +108,31 @@ create index if not exists messages_room_code_idx on public.messages (room_code,
 
 -- Leaderboard view: top players by rating, tie-broken by win count.
 create or replace view public.leaderboard as
-  select id, username, rating, wins, losses
+  select id, username, rating, wins, losses, avatar_url
   from public.profiles
   order by rating desc, wins desc
   limit 100;
 
 -- Enable Realtime broadcast on the messages table for live chat.
 alter publication supabase_realtime add table public.messages;
+
+-- Avatar storage: a public bucket for profile pictures. Each user may only
+-- write to a path prefixed with their own uid (avatars/<uid>/...).
+insert into storage.buckets (id, name, public)
+  values ('avatars', 'avatars', true)
+  on conflict (id) do nothing;
+
+drop policy if exists "Avatar images are publicly accessible" on storage.objects;
+create policy "Avatar images are publicly accessible"
+  on storage.objects for select
+  using (bucket_id = 'avatars');
+
+drop policy if exists "Users can upload their own avatar" on storage.objects;
+create policy "Users can upload their own avatar"
+  on storage.objects for insert
+  with check (bucket_id = 'avatars' and auth.uid()::text = (storage.foldername(name))[1]);
+
+drop policy if exists "Users can update their own avatar" on storage.objects;
+create policy "Users can update their own avatar"
+  on storage.objects for update
+  using (bucket_id = 'avatars' and auth.uid()::text = (storage.foldername(name))[1]);

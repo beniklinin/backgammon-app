@@ -63,6 +63,9 @@ export default function LoginPage() {
         >
           {t.auth.submit}
         </button>
+        <a href="/signup" className="block text-center text-xs opacity-70 hover:opacity-100">
+          {t.auth.noAccount}
+        </a>
       </form>
     </div>
   );

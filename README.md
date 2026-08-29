@@ -1,8 +1,10 @@
 # 🎲 Backgammon
 
 A modern, open-source backgammon web app — a real rules engine, a difficulty-tiered
-AI opponent, pass-and-play, animated UI, full Hebrew/English (RTL-aware) i18n, and
-light/dark theming. Built with Next.js 14, TypeScript, Tailwind, and Supabase.
+AI opponent, real-time online rooms with chat, ELO rating, a leaderboard, profiles
+with achievements, a game replay viewer, pass-and-play, animated UI, full
+Hebrew/English (RTL-aware) i18n, and light/dark theming. Built with Next.js 14,
+TypeScript, Tailwind, and Supabase.
 
 > Live demo / screenshot: run it locally (below) and it's ready in seconds — no
 > screenshot is checked in yet, see **Known issues**.
@@ -15,6 +17,18 @@ light/dark theming. Built with Next.js 14, TypeScript, Tailwind, and Supabase.
 - 🤖 **AI opponent** with three difficulty levels (Easy / Medium / Hard), the hardest
   tier weighing blot exposure by actual dice-shot probability.
 - 👥 **Local pass-and-play** for two people on one device.
+- 🌐 **Real-time online rooms** (`/play/[code]`) — create a room, share the code or
+  link, and play live over Supabase Realtime (Presence for seats/spectators,
+  Broadcast for move sync). Supports spectators, in-room chat, guest play, and
+  reconnects (state re-syncs from whichever peer still has it).
+- 🏆 **ELO-style rating** computed client-side on game end (each player writes only
+  their own `profiles` row, enforced by RLS — no backend function needed), plus an
+  **all-time / weekly / monthly leaderboard**.
+- 👤 **Profiles** with a photo (Supabase Storage), stats, win rate, recent-game
+  history, and **9 achievement badges** (streaks, gammon/backgammon wins, rating
+  milestones, games played).
+- 🎬 **Game replay viewer** (`/replay/[id]`) — step or auto-play through any stored
+  online match move-by-move on the real board.
 - 🕗 **Move history**, live **pip count**, hit count, turn count, and a game clock.
 - 🎨 A cohesive animated design system: sticky glass navbar with a working mobile
   menu, animated dice, checker pop-in, legal-move highlighting, confirm/win modals.
@@ -23,11 +37,10 @@ light/dark theming. Built with Next.js 14, TypeScript, Tailwind, and Supabase.
   browser on first visit.
 - 📱 Responsive across mobile, tablet, and desktop.
 - 📦 PWA-ready: manifest, service worker, installable icon.
-- 🔌 **Supabase-ready**: auth, chat, and a leaderboard/profile schema are already
-  defined in `supabase/schema.sql` and the client code checks for configuration
-  before using it — connect a project and those features turn on with no code
-  changes (see **Environment variables** below). Online real-time rooms, profiles,
-  leaderboard, and rating are the next milestone — see **Roadmap**.
+- 🔌 **Supabase-ready**: auth, chat, profiles, games, and storage are defined in
+  `supabase/schema.sql`; the client code checks for configuration before using
+  it, so the app still runs fully (AI + pass-and-play) with zero setup — see
+  **Environment variables**.
 
 ## Tech stack
 
@@ -63,7 +76,9 @@ Without them, `isSupabaseConfigured` is `false` and the app cleanly falls back t
 local-only play — nothing crashes, and the UI explains what's missing.
 
 To set up the database: open your Supabase project's SQL editor and run
-`supabase/schema.sql` once. It's idempotent (safe to re-run).
+`supabase/schema.sql` once. It's idempotent (safe to re-run — re-run it after
+pulling if you set this project up before the `moves`/`avatar_url` columns or the
+`avatars` storage bucket existed).
 
 ## Scripts
 
@@ -82,17 +97,25 @@ npm run e2e            # Playwright e2e tests
 
 ```
 app/                  Next.js App Router pages
-  play/                the game screen (menu, board, AI/pass-and-play)
-  login/               Supabase auth
-components/           UI components (Board, DiceRoller, Navbar, Modal, Chat, ...)
+  play/                the game menu (AI / pass-and-play / online)
+  play/[code]/         online room: realtime board, chat, seats, rematch
+  leaderboard/         all-time / weekly / monthly rankings
+  profile/             your own profile (avatar upload, stats, achievements)
+  profile/[username]/  a public profile page
+  replay/[id]/         step/auto-play viewer for a stored online game
+  login/, signup/      Supabase auth
+components/           UI components (Board, DiceRoller, Navbar, Modal, Chat,
+                        Avatar, ProfileView, ...)
 lib/
-  backgammon/          engine.ts (rules), ai.ts (opponent), pip.ts (stats)
+  backgammon/          engine.ts (rules), ai.ts (opponent), pip.ts (stats),
+                        elo.ts (rating), achievements.ts (badges),
+                        online.ts (useOnlineRoom — Realtime sync hook)
   i18n/                dictionaries + provider (English/Hebrew, RTL-aware)
   theme/               light/dark theme provider
   auth/                Supabase auth provider
   supabase/            client + generated-style types
-supabase/schema.sql  Postgres schema, RLS policies, triggers, and the
-                        leaderboard view — run once against a Supabase project
+supabase/schema.sql  Postgres schema, RLS policies, triggers, the leaderboard
+                        view, and the `avatars` storage bucket — run once
 public/                manifest, service worker, icon
 ```
 
@@ -117,6 +140,26 @@ Run `npm run test` to see the engine's own test suite (`engine.test.ts`) — it
 covers the starting position, blocked points, hitting, bar re-entry, forced dice
 usage, and all three win kinds.
 
+## Online rooms & rating (how it works)
+
+`lib/backgammon/online.ts` (`useOnlineRoom`) syncs a room over one Supabase
+Realtime channel per code — no server function or dedicated backend:
+
+- **Presence** tracks who's in the room; the two earliest joiners (by a
+  per-tab-persisted join time, so a refresh doesn't bump you to spectator) are
+  seated White/Black, everyone else is a spectator.
+- **Broadcast** carries the game state: whichever seat has an authoritative copy
+  answers `request-state` (asked by anyone who just joined or reconnected) with a
+  full snapshot, and every move/roll/reset re-broadcasts one. This keeps clients
+  in sync without a shared server process.
+- **Rating**: once both seats are filled by signed-in players, their starting
+  ratings are frozen; on game end each client updates *only its own*
+  `profiles.rating`/`wins`/`losses` (RLS: `auth.uid() = id`), and whichever seat
+  is authenticated inserts the one `games` row (with the full move list, for
+  replay). A guest can always play — the match just isn't rated, and isn't saved.
+- **Achievements** (`lib/backgammon/achievements.ts`) are derived from that same
+  `games` history client-side, so no extra tables were needed.
+
 ## Deploying
 
 The app builds as a standard Next.js app (`output: "standalone"`), so it deploys
@@ -130,24 +173,21 @@ cleanly to [Vercel](https://vercel.com/):
 
 ## Roadmap
 
-Deliberately not built yet, so nothing here is half-working:
+Now built: online real-time rooms with spectating, chat, ELO rating, an all-time
+/ weekly / monthly leaderboard, profiles with photo upload and achievements, and
+a replay viewer. Deliberately not built yet:
 
-- **Online real-time rooms** (`/play/[code]`) over Supabase Realtime — the
-  "create/join room" buttons already exist and build the right URL; the schema
-  already has a `games` table for it.
-- **Accounts pages**: `/signup`, `/profile` (avatar, stats, game history, badges).
-- **Leaderboard page** rendering the `public.leaderboard` view already defined in
-  `supabase/schema.sql`.
-- **ELO-style rating**, computed client-side on game end (RLS already scopes each
-  player to updating their own profile row, so no server function is needed).
-- **Achievements/badges** (first win, win streaks, gammon/backgammon wins).
-- Friends, invites, and notifications.
-- Tournaments and a daily challenge.
-- Game replay viewer (move history is already tracked in-session — persisting it
-  is the main remaining piece).
-- Spectating other players' live games.
-- An AI "coach" that explains its move choice, and a training/puzzle mode.
-- Seasonal/weekly leaderboards and an XP/level system.
+- **Friends, invites-by-link-with-notification, and a players' inbox.** Today an
+  "invite a friend" is just sharing the room link/code (`/play/[code]`), which
+  covers the common case without new tables; a real friends list needs its own
+  schema (`friends`, `notifications`) and is the most valuable next addition.
+- **Tournaments and a daily challenge** — would build on the existing `games` +
+  rating pipeline, but need bracket/challenge state of their own.
+- **Spectating past the room itself** — you can watch a room live if you have its
+  code, but there's no lobby of "games happening right now" to browse.
+- **An AI "coach"** that explains its move choice, and a training/puzzle mode.
+- **XP/levels** on top of the existing rating and achievement system.
+- A real multi-ply AI search (see Known issues).
 
 ## Known issues
 
@@ -157,5 +197,11 @@ Deliberately not built yet, so nothing here is half-working:
   `https://example.com`; update it to the real deployed domain once you have one.
 - The AI's "Hard" difficulty is a stronger single-ply heuristic, not a real
   multi-ply search — it's noticeably better than "Medium" but still beatable.
-- Supabase-backed pieces (`Chat`, `AuthProvider`, `login`) are wired up but there
-  are no accounts/leaderboard pages yet to exercise them end-to-end (see Roadmap).
+- Online rooms trust the seated players' clients to compute legal moves (there's
+  no server-side referee) — fine for a casual app between two willing players,
+  not resistant to a deliberately modified client.
+- A disconnected opponent doesn't auto-forfeit; the game just waits (presence
+  shows they've left via the shrinking spectator/seat count, but there's no
+  timeout).
+- Local AI/pass-and-play games aren't rated and don't affect the leaderboard by
+  design — only online room matches between two signed-in players are ranked.
